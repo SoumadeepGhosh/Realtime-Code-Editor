@@ -3,7 +3,7 @@ import "./App.css";
 import io from "socket.io-client";
 import Editor from "@monaco-editor/react";
 
-const socket = io("https://realtime-code-editor-xxfx.onrender.com");
+const socket = io("http://localhost:5000/");
 
 const App = () => {
   const [joined, setJoined] = useState(false);
@@ -14,6 +14,8 @@ const App = () => {
   const [copySuccess, setCopySuccess] = useState("");
   const [users, setUsers] = useState([]);
   const [typing, setTyping] = useState("");
+  const [outPut, setOutPut] = useState("");
+  const [version, setVersion] = useState("*");
 
   useEffect(() => {
     socket.on("userJoined", (users) => {
@@ -25,33 +27,38 @@ const App = () => {
     });
 
     socket.on("userTyping", (user) => {
-      setTyping(`${user.slice(0,8)}... is Typing`);
+      setTyping(`${user.slice(0, 8)}... is Typing`);
       setTimeout(() => setTyping(""), 2000);
     });
 
     socket.on("languageUpdate", (newLanguage) => {
       setLanguage(newLanguage);
-    } )
+    });
+
+    socket.on("codeResponse", (response) => {
+      setOutPut(response.run.output);
+    });
 
     return () => {
       socket.off("userJoined");
       socket.off("codeUpdate");
       socket.off("userTyping");
       socket.off("languageUpdate");
+      socket.off("codeResponse");
     };
-  },[]);
+  }, []);
 
   useEffect(() => {
-    const handleBeforeUnlode= () =>{
-      socket.emit("leaveRoom")
-    }
+    const handleBeforeUnload = () => {
+      socket.emit("leaveRoom");
+    };
 
-    window.addEventListener("beforeunload", handleBeforeUnlode)
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
-    return() => {
-      window.removeEventListener("beforeunload", handleBeforeUnlode);
-    }
-  }, [])
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
 
   const joinRoom = () => {
     if (roomId && userName) {
@@ -67,43 +74,45 @@ const App = () => {
     setUserName("");
     setCode("// start code here");
     setLanguage("javascript");
-  }
+  };
 
   const copyRoomId = () => {
     navigator.clipboard.writeText(roomId);
-    setCopySuccess("Copied");
+    setCopySuccess("Copied!");
     setTimeout(() => setCopySuccess(""), 2000);
   };
 
   const handleCodeChange = (newCode) => {
     setCode(newCode);
     socket.emit("codeChange", { roomId, code: newCode });
-    socket.emit("typing", {roomId, userName})
+    socket.emit("typing", { roomId, userName });
   };
 
   const handleLanguageChange = (e) => {
-    const newLanguage = e.target.value
+    const newLanguage = e.target.value;
     setLanguage(newLanguage);
-    socket.emit("languageChange", {roomId, language: newLanguage});
-  }
+    socket.emit("languageChange", { roomId, language: newLanguage });
+  };
+
+  const runCode = () => {
+    socket.emit("compileCode", { code, roomId, language, version });
+  };
 
   if (!joined) {
     return (
       <div className="join-container">
         <div className="join-form">
-          <h1>Join a Room</h1>
+          <h1>Join Code Room</h1>
           <input
             type="text"
-            name="room_id"
-            id="room_id"
             placeholder="Room Id"
+            value={roomId}
             onChange={(e) => setRoomId(e.target.value)}
           />
           <input
             type="text"
-            name="user_name"
-            id="user_name"
             placeholder="Your Name"
+            value={userName}
             onChange={(e) => setUserName(e.target.value)}
           />
           <button onClick={joinRoom}>Join Room</button>
@@ -117,7 +126,7 @@ const App = () => {
       <div className="sidebar">
         <div className="room-info">
           <h2>Code Room: {roomId}</h2>
-          <button className="copy-button" onClick={copyRoomId}>
+          <button onClick={copyRoomId} className="copy-button">
             Copy Id
           </button>
           {copySuccess && <span className="copy-success">{copySuccess}</span>}
@@ -136,15 +145,17 @@ const App = () => {
         >
           <option value="javascript">JavaScript</option>
           <option value="python">Python</option>
-          <option value="Java">Java</option>
-          <option value="Cpp">C++</option>
+          <option value="java">Java</option>
+          <option value="cpp">C++</option>
         </select>
-        <button className="leave-button" onClick={leaveRoom}>Leave Button</button>
+        <button className="leave-button" onClick={leaveRoom}>
+          Leave Room
+        </button>
       </div>
 
       <div className="editor-wrapper">
         <Editor
-          height={"100%"}
+          height={"60%"}
           defaultLanguage={language}
           language={language}
           value={code}
@@ -154,6 +165,15 @@ const App = () => {
             minimap: { enabled: false },
             fontSize: 14,
           }}
+        />
+        <button className="run-btn" onClick={runCode}>
+          Execute
+        </button>
+        <textarea
+          className="output-console"
+          value={outPut}
+          readOnly
+          placeholder="Output will appear here ..."
         />
       </div>
     </div>
